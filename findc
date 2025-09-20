@@ -1,0 +1,78 @@
+const fs = require('fs');
+
+// Read JSON input from a file or stdin
+let inputJSON = '';
+if (process.argv[2]) {
+    inputJSON = fs.readFileSync(process.argv[2], 'utf-8'); // node script.js testcase.json
+} else {
+    inputJSON = fs.readFileSync(0, 'utf-8'); // stdin
+}
+
+const data = JSON.parse(inputJSON);
+
+// Extract n, k
+const n = data.keys.n;
+const k = data.keys.k;
+
+// Collect first k points as [x, y]
+let points = [];
+for (let key of Object.keys(data)) {
+    if (key === 'keys') continue;
+    const idx = parseInt(key);
+    const base = parseInt(data[key].base);
+    const valueStr = data[key].value;
+    const y = BigInt(`0x${parseInt(valueStr, base).toString(16)}`); // convert any base to BigInt
+    points.push([idx, y]);
+}
+
+// Sort by x and take first k points
+points.sort((a, b) => a[0] - b[0]);
+points = points.slice(0, k);
+
+// Solve polynomial using Gaussian elimination
+function gaussianSolve(A, b) {
+    const n = A.length;
+    // Forward elimination
+    for (let i = 0; i < n; i++) {
+        // Find pivot
+        let maxRow = i;
+        for (let r = i + 1; r < n; r++)
+            if (A[r][i] > A[maxRow][i]) maxRow = r;
+        [A[i], A[maxRow]] = [A[maxRow], A[i]];
+        [b[i], b[maxRow]] = [b[maxRow], b[i]];
+
+        // Normalize row
+        const div = A[i][i];
+        for (let c = i; c < n; c++) A[i][c] /= div;
+        b[i] /= div;
+
+        // Eliminate column
+        for (let r = 0; r < n; r++) {
+            if (r === i) continue;
+            const factor = A[r][i];
+            for (let c = i; c < n; c++) A[r][c] -= factor * A[i][c];
+            b[r] -= factor * b[i];
+        }
+    }
+    return b;
+}
+
+// Build matrix for polynomial coefficients
+const deg = k - 1;
+const A = [];
+const b = [];
+for (let i = 0; i < k; i++) {
+    let row = [];
+    let xpow = 1;
+    for (let j = 0; j < k; j++) { // ascending powers
+        row.push(Number(xpow));
+        xpow *= points[i][0];
+    }
+    A.push(row);
+    b.push(Number(points[i][1]));
+}
+
+const coeffs = gaussianSolve(A, b);
+
+// Constant term is coeffs[0]
+console.log(Math.round(coeffs[0]));
